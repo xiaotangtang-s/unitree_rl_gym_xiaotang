@@ -8,7 +8,14 @@ import torch
 class G1Robot(LeggedRobot):
     
     def _get_noise_scale_vec(self, cfg):
-        """ Sets a vector used to scale the noise added to the observations.
+        """
+        作用：返回一个用于控制观测噪声的向量。
+        核心逻辑：
+            通过读取配置文件中的噪声参数(noise_scales 和 noise_level)以及观测的尺度因子(obs_scales)计算噪声强度。
+            不同观测量（如角速度、重力、关节位置、速度）有不同的噪声强度。
+            输出是一个形状与观测数据一致的张量，用于生成噪声。
+
+        Sets a vector used to scale the noise added to the observations.
             [NOTE]: Must be adapted when changing the observations structure
 
         Args:
@@ -32,6 +39,12 @@ class G1Robot(LeggedRobot):
         return noise_vec
 
     def _init_foot(self):
+        """
+        作用：初始化与足部相关的状态数据。
+        核心逻辑：
+            获取机器人刚体的状态数据，并提取足部位置和速度。
+            足部信息通过 self.feet_indices 确定，用于定义哪些关节是足部。
+        """
         self.feet_num = len(self.feet_indices)
         
         rigid_body_state = self.gym.acquire_rigid_body_state_tensor(self.sim)
@@ -42,10 +55,22 @@ class G1Robot(LeggedRobot):
         self.feet_vel = self.feet_state[:, :, 7:10]
         
     def _init_buffers(self):
+        """
+        作用：初始化一些必要的缓冲区。
+        核心逻辑：
+            调用父类的初始化方法。
+            初始化与足部状态相关的缓冲区（_init_foot）。    
+        """
         super()._init_buffers()
         self._init_foot()
 
     def update_feet_state(self):
+        """
+        作用：更新足部状态（位置和速度）。
+        核心逻辑：
+            通过 Isaac Gym 的 API 刷新刚体状态。
+            重新计算足部的位置和速度。
+        """
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         
         self.feet_state = self.rigid_body_states_view[:, self.feet_indices, :]
@@ -53,6 +78,12 @@ class G1Robot(LeggedRobot):
         self.feet_vel = self.feet_state[:, :, 7:10]
         
     def _post_physics_step_callback(self):
+        """
+        作用：每步物理模拟后更新足部状态和步态相位。
+        核心逻辑：
+            更新步态周期（self.phase）和左右腿的相位偏移。
+            调用父类的回调方法。
+        """
         self.update_feet_state()
 
         period = 0.8
@@ -67,6 +98,11 @@ class G1Robot(LeggedRobot):
     
     def compute_observations(self):
         """ Computes observations
+        作用：计算机器人在当前环境下的观测数据。
+        核心逻辑：
+            观测数据包括角速度、重力、指令、关节位置、速度等，以及步态的正弦和余弦相位。
+            提供特权观测（privileged_obs_buf），用于模拟学习时增强策略的训练。
+            如果启用了噪声（add_noise），会对观测数据添加噪声。
         """
         sin_phase = torch.sin(2 * np.pi * self.phase ).unsqueeze(1)
         cos_phase = torch.cos(2 * np.pi * self.phase ).unsqueeze(1)
@@ -94,7 +130,7 @@ class G1Robot(LeggedRobot):
         if self.add_noise:
             self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
 
-        
+    # 奖励足部在支撑相位内与地面接触，或在摆动相位内不接触地面。
     def _reward_contact(self):
         res = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
         for i in range(self.feet_num):
@@ -103,15 +139,18 @@ class G1Robot(LeggedRobot):
             res += ~(contact ^ is_stance)
         return res
     
+    # 奖励足部在摆动相位的期望高度，惩罚偏差。
     def _reward_feet_swing_height(self):
         contact = torch.norm(self.contact_forces[:, self.feet_indices, :3], dim=2) > 1.
         pos_error = torch.square(self.feet_pos[:, :, 2] - 0.08) * ~contact
         return torch.sum(pos_error, dim=(1))
     
+    # 奖励机器人保持存活
     def _reward_alive(self):
         # Reward for staying alive
         return 1.0
     
+    # 惩罚足部接触地面但没有速度的情况，鼓励动态接触。
     def _reward_contact_no_vel(self):
         # Penalize contact with no velocity
         contact = torch.norm(self.contact_forces[:, self.feet_indices, :3], dim=2) > 1.
@@ -119,6 +158,7 @@ class G1Robot(LeggedRobot):
         penalize = torch.square(contact_feet_vel[:, :, :3])
         return torch.sum(penalize, dim=(1,2))
     
+    # 惩罚髋关节位置偏离目标值的情况
     def _reward_hip_pos(self):
         return torch.sum(torch.square(self.dof_pos[:,[1,2,7,8]]), dim=1)
     

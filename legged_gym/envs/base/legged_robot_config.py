@@ -2,7 +2,7 @@ from .base_config import BaseConfig
 
 class LeggedRobotCfg(BaseConfig):
     class env:
-        num_envs = 4096
+        num_envs = 4096 #robots number
         num_observations = 48
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
@@ -12,29 +12,31 @@ class LeggedRobotCfg(BaseConfig):
         test = False
 
     class terrain:
-        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
-        horizontal_scale = 0.1 # [m]
-        vertical_scale = 0.005 # [m]
-        border_size = 25 # [m]
-        curriculum = True
-        static_friction = 1.0
-        dynamic_friction = 1.0
-        restitution = 0.
-        # rough terrain only:
-        measure_heights = True
-        measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # 1mx1.6m rectangle (without center line)
-        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
-        selected = False # select a unique terrain type and pass all arguments
-        terrain_kwargs = None # Dict of arguments for selected terrain
-        max_init_terrain_level = 5 # starting curriculum state
-        terrain_length = 8.
-        terrain_width = 8.
-        num_rows= 10 # number of terrain rows (levels)
-        num_cols = 20 # number of terrain cols (types)
+        mesh_type = 'plane' #地形网格类型 "heightfield" # none, plane, heightfield or trimesh
+        horizontal_scale = 0.1 #水平缩放比例 [m]
+        vertical_scale = 0.005 #垂直缩放比例 [m]
+        border_size = 25 #边界大小 [m]
+        curriculum = True #是否应用课程学习方法
+        static_friction = 1.0 # 静态摩擦系数
+        dynamic_friction = 1.0 # 动态摩擦系数
+        restitution = 0. # 弹性恢复系数
+        # rough terrain only:仅粗糙地形相关
+        measure_heights = True# 是否测量高度
+        measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # 在1mx1.6m矩形范围内测量的点的x坐标（不包括中心线）
+        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]# 测量点的y坐标
+        selected = False # select a unique terrain type and pass all arguments 是否选择唯一的地形类型并传递所有参数
+        terrain_kwargs = None # 为所选地形类型指定的参数字典
+        max_init_terrain_level = 5 # 课程学习开始的最大初始地形等级
+        terrain_length = 8. # 地形长度，单位：米
+        terrain_width = 8. # 地形宽度，单位：米
+        num_rows= 20 # 地形行数（等级）
+        num_cols = 20 # 地形列数（类型）
+        # 地形类型：[平滑斜坡，粗糙斜坡，上楼梯，下楼梯，离散]
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
         terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]
         # trimesh only:
-        slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
+        # trimesh（三角形网格）仅适用：
+        slope_treshold = 0.75 # 斜坡阈值，高于此阈值的斜坡将被修正为垂直表面
 
     class commands:
         curriculum = False
@@ -60,8 +62,13 @@ class LeggedRobotCfg(BaseConfig):
     class control:
         control_type = 'P' # P: position, V: velocity, T: torques
         # PD Drive parameters:
-        stiffness = {'joint_a': 10.0, 'joint_b': 15.}  # [N*m/rad]
-        damping = {'joint_a': 1.0, 'joint_b': 1.5}     # [N*m*s/rad]
+        # stiffness = {'joint_a': 10.0, 'joint_b': 15.}  # [N*m/rad]
+        # damping = {'joint_a': 1.0, 'joint_b': 1.5}     # [N*m*s/rad]
+
+        # 尝试让机器人跳起来
+        stiffness = {'joint_a': 100.0, 'joint_b': 100.0}  # [N*m/rad]
+        damping = {'joint_a': 10.0, 'joint_b': 10.0}     # [N*m*s/rad] 
+
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.5
         # decimation: Number of control action updates @ sim DT per policy DT
@@ -213,3 +220,19 @@ class LeggedRobotCfgPPO(BaseConfig):
         load_run = -1 # -1 = last run
         checkpoint = -1 # -1 = last saved model
         resume_path = None # updated from load_run and chkpt
+
+"""
+# create a directory to clone
+mkdir ~/git && cd ~/git
+# clone a repository with URDF files
+git clone git@github.com:isaac-orbit/anymal_d_simple_description.git
+
+cd IsaacLab
+conda activate isaaclab
+python source/standalone/tools/convert_urdf.py \
+  ~/git/anymal_d_simple_description/urdf/anymal.urdf \
+  source/extensions/omni.isaac.lab_assets/data/Robots/ANYbotics/anymal_d.usd \
+  --merge-joints \
+  --make-instanceable
+
+"""
