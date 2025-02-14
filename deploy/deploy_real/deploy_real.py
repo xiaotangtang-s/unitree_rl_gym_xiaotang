@@ -285,6 +285,8 @@ class Controller:
 
         # time.sleep(self.config.control_dt)
 
+        # 计数器，记录当前控制循环的次数
+        self.counter += 1
         # ==== 新增状态管理变量 ==== 
         if not hasattr(self, "step_in_place"):  # 初始化标志位
             self.step_in_place = False          # 原地踏步状态
@@ -293,16 +295,17 @@ class Controller:
 
         # ==== 检测遥控器启动信号 ====
         # 当按下Start键时，进入原地踏步模式
-        if self.remote_controller.button[KeyMap.start] == 1 and not self.step_in_place:
+        if self.remote_controller.button[KeyMap.start] != 1 and not self.step_in_place and self.counter == 1:
+            print("start按键值为：", self.remote_controller.button[KeyMap.start])
             self.step_in_place = True
             self.auto_walk = False
             self.step_start_time = time.time()  # 记录开始时间
 
         # ==== 状态机逻辑 ====
         if self.step_in_place:
-            # 原地踏步阶段（持续5秒）
-            print(f"[Step In Place] Remaining: {5.0 - (time.time()-self.step_start_time):.1f}s")
-            if time.time() - self.step_start_time < 5.0:
+            # 原地踏步阶段（持续3秒）
+            print(f"[Step In Place] Remaining: {3.0 - (time.time()-self.step_start_time):.1f}s")
+            if time.time() - self.step_start_time < 3.0:
                 # 覆盖遥控器指令：强制速度为0（原地踏步）
                 self.cmd[0] = 0.0  # 前进速度
                 self.cmd[1] = 0.0  # 横向速度
@@ -314,20 +317,19 @@ class Controller:
 
         elif self.auto_walk:
             # 自动向前行走阶段
-            print("[Auto Walk] Forward speed: 0.05m/s")
-            self.cmd[0] = 0.05  # 设置前进速度为0.05 m/s
+            print("[Auto Walk] Forward speed: 0.2m/s")
+            self.cmd[0] = 0.2  # 设置前进速度为0.2m/s
             self.cmd[1] = 0.0   # 横向速度
             self.cmd[2] = 0.0   # 转向速度
 
         else:
+            print("按键值为：", self.remote_controller.button[KeyMap.start])
             # 默认状态：直接读取遥控器指令
             self.cmd[0] = self.remote_controller.ly
             self.cmd[1] = self.remote_controller.lx * -1
             self.cmd[2] = self.remote_controller.rx * -1
 
         # 下面的是官方源码（传感器数据读取与观测构建）
-        # 计数器，记录当前控制循环的次数
-        self.counter += 1
 
         # 获取当前关节的位置和速度
         for i in range(len(self.config.leg_joint2motor_idx)):
@@ -357,8 +359,8 @@ class Controller:
         qj_obs = (qj_obs - self.config.default_angles) * self.config.dof_pos_scale # 标准化关节位置
         dqj_obs = dqj_obs * self.config.dof_vel_scale # 标准化关节速度
         ang_vel = ang_vel * self.config.ang_vel_scale # 标准化角速度
-        # 在观测构建后打印关键数据
-        print(f"CMD: {self.cmd} | Phase: {phase:.2f} | Action: {self.action[:3]}")
+        # # 在观测构建后打印关键数据（放在这个位置有问题）
+        # print(f"CMD: {self.cmd} | Phase: {phase:.2f} | Action: {self.action[:3]}")
 
         # 带==的为新增代码
         # ==== 动态调整步态周期 ====
@@ -446,10 +448,11 @@ class Controller:
         # send the command 发送控制命令到机器人
         self.send_cmd(self.low_cmd)
 
-        # ==== 安全停止检测 ====
-        if self.auto_walk and self.remote_controller.button[KeyMap.select] == 1:
-            self.auto_walk = False
-            self.cmd = np.array([0.0, 0.0, 0.0])  # 急停
+        # # ==== 安全停止检测 ====
+        # if self.auto_walk and self.remote_controller.button[KeyMap.select] == 1:
+        #     print("select的按键值为：", self.remote_controller.button[KeyMap.select])
+        #     self.auto_walk = False
+        #     self.cmd = np.array([0.0, 0.0, 0.0])  # 急停
 
         # 按控制周期休眠（通常为0.002秒，对应500Hz）
         time.sleep(self.config.control_dt)    
