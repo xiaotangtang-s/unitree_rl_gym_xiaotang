@@ -20,6 +20,14 @@ from .legged_robot_config import LeggedRobotCfg
 
 class LeggedRobot(BaseTask):
     #环境创建
+    """
+        四足机器人强化学习训练环境核心类
+
+    功能：
+    - 管理Isaac Gym仿真环境
+    - 处理机器人状态观测、动作执行、奖励计算
+    - 实现多环境并行训练基础逻辑
+    """
     def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
         """ Parses the provided config file,
             calls create_sim() (which creates, simulation and environments),
@@ -48,6 +56,9 @@ class LeggedRobot(BaseTask):
         self.init_done = True
     def _init_buffers(self):
         """ Initialize torch tensors which will contain simulation states and processed quantities
+            初始化状态缓冲区
+        将仿真引擎的原始数据（如关节状态、根状态）转换为PyTorch张量，
+        为后续观测计算和策略推理提供快速访问接口
         """
         # get gym GPU state tensors
         actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
@@ -111,6 +122,12 @@ class LeggedRobot(BaseTask):
 
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
+        
+            环境步进核心逻辑
+        1. 剪切动作范围
+        2. 应用PD控制器计算关节扭矩
+        3. 执行物理仿真（支持降频控制decimation）
+        4. 更新观测/奖励/终止状态
         """
 
         clip_actions = self.cfg.normalization.clip_actions
@@ -680,6 +697,11 @@ class LeggedRobot(BaseTask):
         return torch.sum((torch.abs(self.torques) - self.torque_limits*self.cfg.rewards.soft_torque_limit).clip(min=0.), dim=1)
 
     def _reward_tracking_lin_vel(self):
+        """
+            线速度跟踪奖励
+        鼓励机器人基座线速度接近指令值
+        使用指数衰减形式：exp(-误差/方差)
+        """
         # Tracking of linear velocity commands (xy axes)
         lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
         return torch.exp(-lin_vel_error/self.cfg.rewards.tracking_sigma)

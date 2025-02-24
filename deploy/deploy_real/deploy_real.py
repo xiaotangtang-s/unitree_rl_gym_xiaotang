@@ -331,12 +331,20 @@ class Controller:
 
         # 下面的是官方源码（传感器数据读取与观测构建）
 
-        # 获取当前关节的位置和速度
+        # 获取当前腿部关节的位置和速度
         for i in range(len(self.config.leg_joint2motor_idx)):
             # 读取关节位置（q）
             self.qj[i] = self.low_state.motor_state[self.config.leg_joint2motor_idx[i]].q
             # 读取关节速度（dq）
             self.dqj[i] = self.low_state.motor_state[self.config.leg_joint2motor_idx[i]].dq
+
+        # 新增：获取手臂关节状态
+        arm_qj = np.zeros(10, dtype=np.float32)
+        arm_dqj = np.zeros(10, dtype=np.float32)
+        for i in range(len(self.config.arm_waist_joint2motor_idx)):
+            motor_idx = self.config.arm_waist_joint2motor_idx[i]
+            arm_qj[i] = self.low_state.motor_state[motor_idx].q
+            arm_dqj[i] = self.low_state.motor_state[motor_idx].dq
 
         # imu_state quaternion: w, x, y, z 获取IMU的四元数（姿态）和角速度
         quat = self.low_state.imu_state.quaternion  # 四元数（w, x, y, z）
@@ -381,10 +389,20 @@ class Controller:
         self.obs[9 + num_actions * 3] = sin_phase
         self.obs[9 + num_actions * 3 + 1] = cos_phase
 
+        # 新增手臂关节状态（10维）
+        self.obs[48:52] = (arm_qj - self.config.arm_default_angles)*self.config.dof_pos_scale
+        self.obs[52:56] = arm_dqj * self.config.dof_vel_scale
+
         # ==== 策略网络推理 ====
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
         self.action = self.policy(obs_tensor).detach().numpy().squeeze()
         target_dof_pos = self.config.default_angles + self.action * self.config.action_scale
+
+        # ====新增：为手臂生成摆动动作 ====
+        phase = self.counter * self.config.control_dt % 1.0  # 相位信号（0～1）
+        arm_swing = 0.3 * np.sin(2 * np.pi * phase)  # 摆动幅度0.3rad
+
+        self.action[12:22] = arm_swing  # 假设动作12-15对应手臂关节
 
         # # 计算步态相位信号（用于周期性运动，如踏步）
         # period = 0.8  # 步态周期（秒）
